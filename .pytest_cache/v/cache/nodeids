@@ -1,0 +1,14 @@
+[
+  "tests/test_diff.py::test_added_path_is_not_breaking",
+  "tests/test_diff.py::test_cli_exit_codes",
+  "tests/test_diff.py::test_enum_values_removed",
+  "tests/test_diff.py::test_no_changes",
+  "tests/test_diff.py::test_param_became_required",
+  "tests/test_diff.py::test_param_type_changed",
+  "tests/test_diff.py::test_removed_operation",
+  "tests/test_diff.py::test_removed_optional_param_is_fine",
+  "tests/test_diff.py::test_removed_path",
+  "tests/test_diff.py::test_removed_required_param",
+  "tests/test_diff.py::test_request_body_became_required",
+  "tests/test_diff.py::test_required_body_prop_removed"
+]
