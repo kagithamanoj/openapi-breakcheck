@@ -2,7 +2,8 @@
 
 A breaking change is anything that can break an existing API client:
 removed paths or operations, removed or newly-required parameters,
-narrowed enums, changed types, or newly-required request bodies.
+narrowed enums, changed types, newly-required request bodies, or
+removed or narrowed responses.
 """
 
 from __future__ import annotations
@@ -75,6 +76,7 @@ def diff_specs(old: dict, new: dict) -> list[BreakingChange]:
                 continue
             changes.extend(_diff_parameters(label, old_op, new_op))
             changes.extend(_diff_request_body(label, old_op, new_op))
+            changes.extend(_diff_responses(label, old_op, new_op))
     return changes
 
 
@@ -168,3 +170,96 @@ def _first_schema(body: dict) -> dict:
         if schema:
             return schema
     return {}
+
+
+def _diff_responses(
+    label: str, old_op: dict, new_op: dict
+) -> list[BreakingChange]:
+    changes: list[BreakingChange] = []
+    old_responses = old_op.get("responses") or {}
+    new_responses = new_op.get("responses") or {}
+    for status, old_resp in old_responses.items():
+        loc = f"{label} response '{status}'"
+        new_resp = new_responses.get(status)
+        if new_resp is None:
+            changes.append(
+                BreakingChange("removed-response", loc, "response was removed")
+            )
+            continue
+        old_content = (old_resp or {}).get("content") or {}
+        new_content = (new_resp or {}).get("content") or {}
+        for media, old_media in old_content.items():
+            media_loc = f"{loc} content '{media}'"
+            new_media = new_content.get(media)
+            if new_media is None:
+                changes.append(
+                    BreakingChange(
+                        "removed-response-media-type",
+                        media_loc,
+                        f"response content type '{media}' was removed",
+                    )
+                )
+                continue
+            changes.extend(
+                _diff_response_schema(
+                    media_loc,
+                    (old_media or {}).get("schema") or {},
+                    (new_media or {}).get("schema") or {},
+                )
+            )
+    return changes
+
+
+def _diff_response_schema(
+    loc: str, old_schema: dict, new_schema: dict
+) -> list[BreakingChange]:
+    changes: list[BreakingChange] = []
+    old_type = _schema_type(old_schema)
+    new_type = _schema_type(new_schema)
+    if old_type != new_type:
+        changes.append(
+            BreakingChange(
+                "response-type-changed",
+                loc,
+                f"response type changed from {old_type} to {new_type}",
+            )
+        )
+        return changes
+    removed = sorted(_required_props(old_schema) - _required_props(new_schema))
+    if removed:
+        changes.append(
+            BreakingChange(
+                "required-response-props-removed",
+                loc,
+                f"required response properties removed: {', '.join(removed)}",
+            )
+        )
+    old_props = (old_schema or {}).get("properties") or {}
+    new_props = (new_schema or {}).get("properties") or {}
+    for name, old_prop in old_props.items():
+        new_prop = new_props.get(name)
+        if new_prop is None:
+            continue
+        prop_loc = f"{loc} property '{name}'"
+        old_ptype = _schema_type(old_prop)
+        new_ptype = _schema_type(new_prop)
+        if old_ptype != new_ptype:
+            changes.append(
+                BreakingChange(
+                    "response-prop-type-changed",
+                    prop_loc,
+                    f"type changed from {old_ptype} to {new_ptype}",
+                )
+            )
+        old_enum = set((old_prop or {}).get("enum") or [])
+        new_enum = set((new_prop or {}).get("enum") or [])
+        removed_values = sorted(old_enum - new_enum)
+        if old_enum and removed_values:
+            changes.append(
+                BreakingChange(
+                    "response-enum-values-removed",
+                    prop_loc,
+                    f"enum values removed: {', '.join(map(str, removed_values))}",
+                )
+            )
+    return changes

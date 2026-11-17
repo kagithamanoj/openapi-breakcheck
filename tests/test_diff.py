@@ -4,13 +4,22 @@ from breakcheck import diff_specs
 from breakcheck.cli import main
 
 
-def make_op(params=None, request_body=None):
+def make_op(params=None, request_body=None, responses=None):
     op = {}
     if params is not None:
         op["parameters"] = params
     if request_body is not None:
         op["requestBody"] = request_body
+    if responses is not None:
+        op["responses"] = responses
     return op
+
+
+def response(status="200", schema=None, media="application/json"):
+    content = {}
+    if schema is not None:
+        content = {media: {"schema": schema}}
+    return {status: {"description": "ok", "content": content}}
 
 
 def param(name, where="query", required=False, ptype="string", enum=None):
@@ -106,6 +115,192 @@ def test_required_body_prop_removed():
     new = {"paths": {"/u": {"post": make_op(request_body=body([]))}}}
     changes = diff_specs(old, new)
     assert [c.kind for c in changes] == ["required-body-props-removed"]
+
+
+def test_identical_responses_no_changes():
+    schema = {
+        "type": "object",
+        "required": ["id"],
+        "properties": {"id": {"type": "integer"}},
+    }
+    old = {"paths": {"/u": {"get": make_op(responses=response(schema=schema))}}}
+    new = {"paths": {"/u": {"get": make_op(responses=response(schema=schema))}}}
+    assert diff_specs(old, new) == []
+
+
+def test_removed_response():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses={**response("200"), **response("404")}
+                )
+            }
+        }
+    }
+    new = {"paths": {"/u": {"get": make_op(responses=response("200"))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-response"]
+    assert "'404'" in changes[0].location
+
+
+def test_added_response_is_fine():
+    old = {"paths": {"/u": {"get": make_op(responses=response("200"))}}}
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses={**response("200"), **response("201")}
+                )
+            }
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_response_type_changed():
+    old = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema={"type": "object"}))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema={"type": "array"}))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-type-changed"]
+    assert "object" in changes[0].detail and "array" in changes[0].detail
+
+
+def test_required_response_prop_removed():
+    schema = lambda required: {
+        "type": "object",
+        "required": required,
+        "properties": {"name": {"type": "string"}},
+    }
+    old = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema(["name"])))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema([])))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["required-response-props-removed"]
+    assert "name" in changes[0].detail
+
+
+def test_removed_optional_response_prop_is_fine():
+    schema = lambda required: {
+        "type": "object",
+        "required": required,
+        "properties": {
+            "name": {"type": "string"},
+            "nick": {"type": "string"},
+        },
+    }
+    old = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema(["name"])))}
+        }
+    }
+    new_schema = {
+        "type": "object",
+        "required": ["name"],
+        "properties": {"name": {"type": "string"}},
+    }
+    new = {
+        "paths": {"/u": {"get": make_op(responses=response(schema=new_schema))}}
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_response_prop_type_changed():
+    schema = lambda ptype: {
+        "type": "object",
+        "properties": {"count": {"type": ptype}},
+    }
+    old = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema("integer")))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema("string")))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-prop-type-changed"]
+    assert "'count'" in changes[0].location
+
+
+def test_response_enum_values_removed():
+    schema = lambda values: {
+        "type": "object",
+        "properties": {"status": {"type": "string", "enum": values}},
+    }
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=schema(["active", "archived"]))
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema(["active"])))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-enum-values-removed"]
+    assert "archived" in changes[0].detail
+
+
+def test_removed_response_media_type():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses={
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {"schema": {"type": "object"}},
+                                "text/plain": {"schema": {"type": "string"}},
+                            },
+                        }
+                    }
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses={
+                        "200": {
+                            "description": "ok",
+                            "content": {
+                                "application/json": {"schema": {"type": "object"}},
+                            },
+                        }
+                    }
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-response-media-type"]
+    assert "text/plain" in changes[0].detail
 
 
 def test_cli_exit_codes(tmp_path):

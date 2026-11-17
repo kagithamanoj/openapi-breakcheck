@@ -12,6 +12,10 @@ and get a plain list of everything that can break an existing client.
 - Removed enum values
 - Request bodies that became required
 - Removed required request-body properties
+- Removed responses and response content types
+- Response schema type changes
+- Removed required response properties
+- Response property type changes and narrowed enums
 
 Added endpoints and new optional parameters are not breaking, so they pass.
 
@@ -33,6 +37,7 @@ found. The output lists each change with its kind and location:
 ```
 [removed-operation] DELETE /users: operation was removed
 [param-became-required] GET /users param 'filter' in query: optional parameter became required
+[removed-response] GET /users response '404': response was removed
 ```
 
 Use `--fail-on` in CI to fail only on specific kinds:
