@@ -117,6 +117,99 @@ def test_required_body_prop_removed():
     assert [c.kind for c in changes] == ["required-body-props-removed"]
 
 
+def test_request_body_type_changed():
+    schema = lambda stype: {
+        "type": stype,
+        "properties": {"name": {"type": "string"}},
+    }
+    body = lambda stype: {
+        "content": {"application/json": {"schema": schema(stype)}}
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body("object"))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body("array"))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-type-changed"]
+    assert "object" in changes[0].detail and "array" in changes[0].detail
+
+
+def test_request_body_prop_type_changed():
+    schema = lambda ptype: {
+        "type": "object",
+        "properties": {"count": {"type": ptype}},
+    }
+    body = lambda ptype: {
+        "content": {"application/json": {"schema": schema(ptype)}}
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body("integer"))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body("string"))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "'count'" in changes[0].location
+
+
+def test_request_body_enum_values_removed():
+    schema = lambda values: {
+        "type": "object",
+        "properties": {"status": {"type": "string", "enum": values}},
+    }
+    body = lambda values: {
+        "content": {"application/json": {"schema": schema(values)}}
+    }
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body(["active", "archived"]))}
+        }
+    }
+    new = {"paths": {"/u": {"post": make_op(request_body=body(["active"]))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-enum-values-removed"]
+    assert "archived" in changes[0].detail
+
+
+def test_request_body_enum_widened_is_fine():
+    schema = lambda values: {
+        "type": "object",
+        "properties": {"status": {"type": "string", "enum": values}},
+    }
+    body = lambda values: {
+        "content": {"application/json": {"schema": schema(values)}}
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body(["active"]))}}}
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body(["active", "archived"]))}
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_removed_optional_body_prop_is_fine():
+    schema = lambda props: {"type": "object", "properties": props}
+    body = lambda props: {
+        "content": {"application/json": {"schema": schema(props)}}
+    }
+    old = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=body(
+                        {
+                            "name": {"type": "string"},
+                            "nick": {"type": "string"},
+                        }
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body({"name": {"type": "string"}}))}
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
 def test_identical_responses_no_changes():
     schema = {
         "type": "object",

@@ -12,6 +12,8 @@ and get a plain list of everything that can break an existing client.
 - Removed enum values
 - Request bodies that became required
 - Removed required request-body properties
+- Request-body schema type changes
+- Request-body property type changes and narrowed enums
 - Removed responses and response content types
 - Response schema type changes
 - Removed required response properties

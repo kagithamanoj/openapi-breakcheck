@@ -151,13 +151,60 @@ def _diff_request_body(
     if old_body and new_body:
         old_schema = _first_schema(old_body)
         new_schema = _first_schema(new_body)
-        removed = sorted(_required_props(old_schema) - _required_props(new_schema))
-        if removed:
+        changes.extend(_diff_request_body_schema(label, old_schema, new_schema))
+    return changes
+
+
+def _diff_request_body_schema(
+    loc: str, old_schema: dict, new_schema: dict
+) -> list[BreakingChange]:
+    changes: list[BreakingChange] = []
+    old_type = _schema_type(old_schema)
+    new_type = _schema_type(new_schema)
+    if old_type != new_type:
+        changes.append(
+            BreakingChange(
+                "request-body-type-changed",
+                loc,
+                f"request body type changed from {old_type} to {new_type}",
+            )
+        )
+        return changes
+    removed = sorted(_required_props(old_schema) - _required_props(new_schema))
+    if removed:
+        changes.append(
+            BreakingChange(
+                "required-body-props-removed",
+                loc,
+                f"required body properties removed: {', '.join(removed)}",
+            )
+        )
+    old_props = (old_schema or {}).get("properties") or {}
+    new_props = (new_schema or {}).get("properties") or {}
+    for name, old_prop in old_props.items():
+        new_prop = new_props.get(name)
+        if new_prop is None:
+            continue
+        prop_loc = f"{loc} body property '{name}'"
+        old_ptype = _schema_type(old_prop)
+        new_ptype = _schema_type(new_prop)
+        if old_ptype != new_ptype:
             changes.append(
                 BreakingChange(
-                    "required-body-props-removed",
-                    label,
-                    f"required body properties removed: {', '.join(removed)}",
+                    "request-body-prop-type-changed",
+                    prop_loc,
+                    f"type changed from {old_ptype} to {new_ptype}",
+                )
+            )
+        old_enum = set((old_prop or {}).get("enum") or [])
+        new_enum = set((new_prop or {}).get("enum") or [])
+        removed_values = sorted(old_enum - new_enum)
+        if old_enum and removed_values:
+            changes.append(
+                BreakingChange(
+                    "request-body-enum-values-removed",
+                    prop_loc,
+                    f"enum values removed: {', '.join(map(str, removed_values))}",
                 )
             )
     return changes
