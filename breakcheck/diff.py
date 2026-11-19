@@ -21,6 +21,13 @@ class BreakingChange:
     def __str__(self) -> str:  # pragma: no cover - trivial
         return f"[{self.kind}] {self.location}: {self.detail}"
 
+    def to_dict(self) -> dict:
+        return {
+            "kind": self.kind,
+            "location": self.location,
+            "detail": self.detail,
+        }
+
 
 def load_spec(path: str) -> dict:
     """Load an OpenAPI spec from a JSON or YAML file."""

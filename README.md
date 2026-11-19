@@ -48,6 +48,37 @@ Use `--fail-on` in CI to fail only on specific kinds:
 openapi-breakcheck old.yaml new.yaml --fail-on removed-path,removed-operation
 ```
 
+Use `--output json` for a machine-readable result: one JSON document with
+the list of changes and a summary. Exit codes are the same as text mode.
+
+```bash
+openapi-breakcheck old.yaml new.yaml --output json
+```
+
+```json
+{
+  "changes": [
+    {
+      "kind": "removed-operation",
+      "location": "DELETE /users",
+      "detail": "operation was removed"
+    }
+  ],
+  "summary": {
+    "total": 1
+  }
+}
+```
+
+With `--fail-on`, the summary also reports how many changes matched:
+
+```json
+"summary": {
+  "total": 1,
+  "failing": 1
+}
+```
+
 ## CI example
 
 ```yaml

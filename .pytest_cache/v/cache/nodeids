@@ -1,7 +1,12 @@
 [
   "tests/test_diff.py::test_added_path_is_not_breaking",
   "tests/test_diff.py::test_added_response_is_fine",
+  "tests/test_diff.py::test_breaking_change_to_dict",
   "tests/test_diff.py::test_cli_exit_codes",
+  "tests/test_diff.py::test_cli_json_output_invalid_choice",
+  "tests/test_diff.py::test_cli_json_output_no_changes",
+  "tests/test_diff.py::test_cli_json_output_with_changes",
+  "tests/test_diff.py::test_cli_json_output_with_fail_on",
   "tests/test_diff.py::test_enum_values_removed",
   "tests/test_diff.py::test_identical_responses_no_changes",
   "tests/test_diff.py::test_no_changes",

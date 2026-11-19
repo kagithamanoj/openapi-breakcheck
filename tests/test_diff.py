@@ -410,3 +410,86 @@ def test_cli_exit_codes(tmp_path):
     broken_p.write_text(json.dumps(broken))
     assert main([str(old_p), str(same_p)]) == 0
     assert main([str(old_p), str(broken_p)]) == 1
+
+
+def test_breaking_change_to_dict():
+    from breakcheck import BreakingChange
+
+    change = BreakingChange("removed-path", "/gone", "entire path was removed")
+    assert change.to_dict() == {
+        "kind": "removed-path",
+        "location": "/gone",
+        "detail": "entire path was removed",
+    }
+
+
+def _write_specs(tmp_path, old, new):
+    import json
+
+    old_p = tmp_path / "old.json"
+    new_p = tmp_path / "new.json"
+    old_p.write_text(json.dumps(old))
+    new_p.write_text(json.dumps(new))
+    return str(old_p), str(new_p)
+
+
+def test_cli_json_output_with_changes(tmp_path, capsys):
+    import json
+
+    old_p, new_p = _write_specs(
+        tmp_path,
+        {"paths": {"/u": {"get": {}, "delete": {}}}},
+        {"paths": {"/u": {"get": {}}}},
+    )
+    assert main([old_p, new_p, "--output", "json"]) == 1
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["changes"] == [
+        {
+            "kind": "removed-operation",
+            "location": "DELETE /u",
+            "detail": "operation was removed",
+        }
+    ]
+    assert doc["summary"] == {"total": 1}
+    assert "failing" not in doc["summary"]
+
+
+def test_cli_json_output_no_changes(tmp_path, capsys):
+    import json
+
+    old_p, new_p = _write_specs(
+        tmp_path,
+        {"paths": {"/u": {"get": {}}}},
+        {"paths": {"/u": {"get": {}}}},
+    )
+    assert main([old_p, new_p, "--output", "json"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc == {"changes": [], "summary": {"total": 0}}
+
+
+def test_cli_json_output_with_fail_on(tmp_path, capsys):
+    import json
+
+    old_p, new_p = _write_specs(
+        tmp_path,
+        {"paths": {"/u": {"get": {}, "delete": {}}}},
+        {"paths": {"/u": {"get": {}}}},
+    )
+    assert main([old_p, new_p, "--output", "json", "--fail-on", "removed-operation"]) == 1
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["summary"] == {"total": 1, "failing": 1}
+    assert main([old_p, new_p, "--output", "json", "--fail-on", "removed-path"]) == 0
+    doc = json.loads(capsys.readouterr().out)
+    assert doc["summary"] == {"total": 1, "failing": 0}
+
+
+def test_cli_json_output_invalid_choice(tmp_path):
+    import pytest
+
+    old_p, new_p = _write_specs(
+        tmp_path,
+        {"paths": {"/u": {"get": {}}}},
+        {"paths": {"/u": {"get": {}}}},
+    )
+    with pytest.raises(SystemExit):
+        main([old_p, new_p, "--output", "yaml"])

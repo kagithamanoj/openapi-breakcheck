@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from breakcheck import diff_specs, load_spec
@@ -21,6 +22,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Comma-separated change kinds that fail the check "
         "(default: any breaking change fails)",
     )
+    parser.add_argument(
+        "--output",
+        choices=("text", "json"),
+        default="text",
+        help="Output format: human-readable text (default) or one JSON document",
+    )
     return parser
 
 
@@ -32,13 +39,23 @@ def main(argv: list[str] | None = None) -> int:
     fail_kinds = (
         {k.strip() for k in args.fail_on.split(",")} if args.fail_on else None
     )
+    failing = [c for c in changes if fail_kinds and c.kind in fail_kinds]
+    if args.output == "json":
+        summary = {"total": len(changes)}
+        if fail_kinds is not None:
+            summary["failing"] = len(failing)
+        print(json.dumps({"changes": [c.to_dict() for c in changes], "summary": summary}, indent=2))
+        if not changes:
+            return 0
+        if fail_kinds is not None:
+            return 1 if failing else 0
+        return 1
     for change in changes:
         print(change)
     if not changes:
         print("No breaking changes detected.")
         return 0
     if fail_kinds is not None:
-        failing = [c for c in changes if c.kind in fail_kinds]
         print(f"{len(changes)} breaking change(s), {len(failing)} matching --fail-on.")
         return 1 if failing else 0
     print(f"{len(changes)} breaking change(s) detected.")
