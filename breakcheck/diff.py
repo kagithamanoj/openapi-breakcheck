@@ -186,6 +186,15 @@ def _diff_request_body_schema(
                 f"required body properties removed: {', '.join(removed)}",
             )
         )
+    newly_required = sorted(_required_props(new_schema) - _required_props(old_schema))
+    if newly_required:
+        changes.append(
+            BreakingChange(
+                "request-body-prop-became-required",
+                loc,
+                f"request body properties became required: {', '.join(newly_required)}",
+            )
+        )
     old_props = (old_schema or {}).get("properties") or {}
     new_props = (new_schema or {}).get("properties") or {}
     for name, old_prop in old_props.items():

@@ -117,6 +117,64 @@ def test_required_body_prop_removed():
     assert [c.kind for c in changes] == ["required-body-props-removed"]
 
 
+def test_request_body_prop_became_required():
+    schema = lambda required: {
+        "type": "object",
+        "required": required,
+        "properties": {"email": {"type": "string"}},
+    }
+    body = lambda required: {
+        "content": {"application/json": {"schema": schema(required)}}
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body([]))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(["email"]))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-became-required"]
+    assert "email" in changes[0].detail
+
+
+def test_new_required_body_prop_is_breaking():
+    old_schema = {
+        "type": "object",
+        "required": [],
+        "properties": {"name": {"type": "string"}},
+    }
+    new_schema = {
+        "type": "object",
+        "required": ["email"],
+        "properties": {
+            "name": {"type": "string"},
+            "email": {"type": "string"},
+        },
+    }
+    body = lambda schema: {"content": {"application/json": {"schema": schema}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(old_schema))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(new_schema))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-became-required"]
+    assert "email" in changes[0].detail
+
+
+def test_new_optional_body_prop_is_fine():
+    old_schema = {
+        "type": "object",
+        "required": [],
+        "properties": {"name": {"type": "string"}},
+    }
+    new_schema = {
+        "type": "object",
+        "required": [],
+        "properties": {
+            "name": {"type": "string"},
+            "nick": {"type": "string"},
+        },
+    }
+    body = lambda schema: {"content": {"application/json": {"schema": schema}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(old_schema))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(new_schema))}}}
+    assert diff_specs(old, new) == []
+
+
 def test_request_body_type_changed():
     schema = lambda stype: {
         "type": stype,
