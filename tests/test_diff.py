@@ -241,6 +241,108 @@ def test_request_body_enum_widened_is_fine():
     assert diff_specs(old, new) == []
 
 
+def test_removed_request_body_media_type():
+    body = lambda media: {
+        "content": {
+            m: {"schema": {"type": "object"}}
+            for m in media
+        }
+    }
+    old = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=body(
+                        ["application/json", "application/xml"]
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body(["application/json"]))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-request-body-media-type"]
+    assert "application/xml" in changes[0].detail
+
+
+def test_added_request_body_media_type_is_fine():
+    body = lambda media: {
+        "content": {m: {"schema": {"type": "object"}} for m in media}
+    }
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body(["application/json"]))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=body(
+                        ["application/json", "application/xml"]
+                    )
+                )
+            }
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_removed_request_body_media_type_and_schema_change():
+    old = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body={
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "count": {"type": "integer"}
+                                    },
+                                }
+                            },
+                            "application/xml": {
+                                "schema": {"type": "object"}
+                            },
+                        }
+                    }
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body={
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "count": {"type": "string"}
+                                    },
+                                }
+                            },
+                        }
+                    }
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == [
+        "removed-request-body-media-type",
+        "request-body-prop-type-changed",
+    ]
+
+
 def test_removed_optional_body_prop_is_fine():
     schema = lambda props: {"type": "object", "properties": props}
     body = lambda props: {

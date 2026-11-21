@@ -155,6 +155,17 @@ def _diff_request_body(
                 "request body became required",
             )
         )
+    old_content = old_body.get("content") or {}
+    new_content = new_body.get("content") or {}
+    for media in old_content:
+        if media not in new_content:
+            changes.append(
+                BreakingChange(
+                    "removed-request-body-media-type",
+                    f"{label} request body content '{media}'",
+                    f"request body content type '{media}' was removed",
+                )
+            )
     if old_body and new_body:
         old_schema = _first_schema(old_body)
         new_schema = _first_schema(new_body)
