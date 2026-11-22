@@ -2,7 +2,7 @@
 
 A breaking change is anything that can break an existing API client:
 removed paths or operations, removed or newly-required parameters,
-narrowed enums, changed types, newly-required request bodies, or
+narrowed enums, changed types, removed or newly-required request bodies, or
 removed or narrowed responses.
 """
 
@@ -147,6 +147,15 @@ def _diff_request_body(
     changes: list[BreakingChange] = []
     old_body = old_op.get("requestBody") or {}
     new_body = new_op.get("requestBody") or {}
+    if old_body and not new_body:
+        changes.append(
+            BreakingChange(
+                "removed-request-body",
+                label,
+                "request body was removed",
+            )
+        )
+        return changes
     if not old_body.get("required") and new_body.get("required"):
         changes.append(
             BreakingChange(

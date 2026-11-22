@@ -102,6 +102,48 @@ def test_request_body_became_required():
     assert [c.kind for c in changes] == ["request-body-became-required"]
 
 
+def test_removed_request_body():
+    body = {
+        "required": True,
+        "content": {"application/json": {"schema": {"type": "object"}}},
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body)}}}
+    new = {"paths": {"/u": {"post": make_op()}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-request-body"]
+    assert changes[0].location == "POST /u"
+
+
+def test_removed_request_body_is_one_finding_not_one_per_media_type():
+    body = {
+        "content": {
+            "application/json": {"schema": {"type": "object"}},
+            "application/xml": {"schema": {"type": "object"}},
+        },
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body)}}}
+    new = {"paths": {"/u": {"post": make_op()}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-request-body"]
+
+
+def test_removed_request_body_without_content():
+    body = {"required": True}
+    old = {"paths": {"/u": {"post": make_op(request_body=body)}}}
+    new = {"paths": {"/u": {"post": make_op()}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-request-body"]
+
+
+def test_added_request_body_is_fine():
+    body = {
+        "content": {"application/json": {"schema": {"type": "object"}}},
+    }
+    old = {"paths": {"/u": {"post": make_op()}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body)}}}
+    assert diff_specs(old, new) == []
+
+
 def test_required_body_prop_removed():
     schema = lambda required: {
         "type": "object",
