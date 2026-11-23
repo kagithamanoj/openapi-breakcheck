@@ -7,6 +7,7 @@ and get a plain list of everything that can break an existing client.
 
 - Removed paths and operations
 - Removed required parameters
+- Newly added required parameters
 - Parameters that changed from optional to required
 - Parameter type changes
 - Removed enum values

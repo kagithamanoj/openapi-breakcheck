@@ -76,6 +76,45 @@ def test_param_became_required():
     assert [c.kind for c in changes] == ["param-became-required"]
 
 
+def test_added_required_param_is_breaking():
+    old = {"paths": {"/u": {"get": make_op([param("limit")])}}}
+    new = {
+        "paths": {
+            "/u": {"get": make_op([param("limit"), param("tenant", required=True)])}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["added-required-param"]
+    assert "'tenant'" in changes[0].location
+    assert "in query" in changes[0].location
+
+
+def test_added_optional_param_is_fine():
+    old = {"paths": {"/u": {"get": make_op([param("limit")])}}}
+    new = {
+        "paths": {
+            "/u": {"get": make_op([param("limit"), param("verbose")])}
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_added_required_param_in_other_location():
+    old = {"paths": {"/u": {"get": make_op([param("id")])}}}
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    [param("id"), param("id", where="header", required=True)]
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["added-required-param"]
+    assert "in header" in changes[0].location
+
+
 def test_param_type_changed():
     old = {"paths": {"/u": {"get": make_op([param("id", ptype="string")])}}}
     new = {"paths": {"/u": {"get": make_op([param("id", ptype="integer")])}}}

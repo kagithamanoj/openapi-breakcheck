@@ -134,6 +134,18 @@ def _diff_parameters(
                     f"enum values removed: {', '.join(map(str, removed_values))}",
                 )
             )
+    for key, new_p in new_params.items():
+        if key in old_params:
+            continue
+        if new_p.get("required"):
+            name, where = key
+            changes.append(
+                BreakingChange(
+                    "added-required-param",
+                    f"{label} param '{name}' in {where}",
+                    "new required parameter was added",
+                )
+            )
     return changes
 
 
