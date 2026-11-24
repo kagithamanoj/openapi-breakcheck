@@ -11,6 +11,7 @@ and get a plain list of everything that can break an existing client.
 - Parameters that changed from optional to required
 - Parameter type changes
 - Removed enum values
+- Path-item parameters (defined once on a path, shared by all its operations)
 - Request bodies that became required
 - Request bodies that were removed entirely
 - Removed request-body content types

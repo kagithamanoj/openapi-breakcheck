@@ -130,6 +130,146 @@ def test_enum_values_removed():
     assert "b" in changes[0].detail
 
 
+def test_unchanged_path_item_param_is_fine():
+    old = {"paths": {"/u": {"parameters": [param("limit")], "get": make_op([])}}}
+    new = {"paths": {"/u": {"parameters": [param("limit")], "get": make_op([])}}}
+    assert diff_specs(old, new) == []
+
+
+def test_removed_required_path_item_param():
+    old = {
+        "paths": {
+            "/u": {
+                "parameters": [param("tenant", required=True)],
+                "get": make_op([]),
+            }
+        }
+    }
+    new = {"paths": {"/u": {"parameters": [], "get": make_op([])}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["removed-required-param"]
+    assert "'tenant'" in changes[0].location
+
+
+def test_removed_optional_path_item_param_is_fine():
+    old = {"paths": {"/u": {"parameters": [param("verbose")], "get": make_op([])}}}
+    new = {"paths": {"/u": {"parameters": [], "get": make_op([])}}}
+    assert diff_specs(old, new) == []
+
+
+def test_path_item_param_became_required():
+    old = {"paths": {"/u": {"parameters": [param("filter")], "get": make_op([])}}}
+    new = {
+        "paths": {
+            "/u": {
+                "parameters": [param("filter", required=True)],
+                "get": make_op([]),
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["param-became-required"]
+
+
+def test_path_item_param_type_changed():
+    old = {
+        "paths": {
+            "/u": {"parameters": [param("id", ptype="string")], "get": make_op([])}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"parameters": [param("id", ptype="integer")], "get": make_op([])}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["param-type-changed"]
+
+
+def test_path_item_enum_values_removed():
+    old = {
+        "paths": {
+            "/u": {
+                "parameters": [param("sort", enum=["a", "b"])],
+                "get": make_op([]),
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"parameters": [param("sort", enum=["a"])], "get": make_op([])}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["enum-values-removed"]
+    assert "b" in changes[0].detail
+
+
+def test_added_required_path_item_param():
+    old = {"paths": {"/u": {"parameters": [param("limit")], "get": make_op([])}}}
+    new = {
+        "paths": {
+            "/u": {
+                "parameters": [param("limit"), param("tenant", required=True)],
+                "get": make_op([]),
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["added-required-param"]
+    assert "'tenant'" in changes[0].location
+
+
+def test_path_item_param_applies_to_all_operations():
+    old = {
+        "paths": {
+            "/u": {
+                "parameters": [param("tenant", required=True)],
+                "get": make_op([]),
+                "post": make_op([]),
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"parameters": [], "get": make_op([]), "post": make_op([])}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == [
+        "removed-required-param",
+        "removed-required-param",
+    ]
+    assert {c.location.split(" ")[0] for c in changes} == {"GET", "POST"}
+
+
+def test_operation_param_overrides_path_item_param():
+    old = {
+        "paths": {
+            "/u": {
+                "parameters": [param("filter", required=True)],
+                "get": make_op([param("filter")]),
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "parameters": [param("filter", required=True)],
+                "get": make_op([]),
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["param-became-required"]
+
+
+def test_param_moved_from_path_item_to_operation_is_fine():
+    old = {"paths": {"/u": {"parameters": [param("limit")], "get": make_op([])}}}
+    new = {"paths": {"/u": {"parameters": [], "get": make_op([param("limit")])}}}
+    assert diff_specs(old, new) == []
+
+
 def test_request_body_became_required():
     body = lambda required: {
         "required": required,

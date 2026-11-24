@@ -47,10 +47,22 @@ def load_spec(path: str) -> dict:
 _METHODS = ("get", "put", "post", "delete", "patch", "head", "options", "trace")
 
 
-def _params_by_key(operation: dict) -> dict:
+def _params_by_key(container: dict) -> dict:
     params = {}
-    for p in operation.get("parameters") or []:
+    for p in container.get("parameters") or []:
         params[(p.get("name"), p.get("in"))] = p
+    return params
+
+
+def _effective_params(item: dict, operation: dict) -> dict:
+    """Merge path-item parameters with operation parameters.
+
+    Parameters defined on the path item apply to every operation on that
+    path; an operation parameter with the same name and location overrides
+    the path-item one, per the OpenAPI spec.
+    """
+    params = _params_by_key(item)
+    params.update(_params_by_key(operation))
     return params
 
 
@@ -81,18 +93,22 @@ def diff_specs(old: dict, new: dict) -> list[BreakingChange]:
                     BreakingChange("removed-operation", label, "operation was removed")
                 )
                 continue
-            changes.extend(_diff_parameters(label, old_op, new_op))
+            changes.extend(
+                _diff_parameters(
+                    label,
+                    _effective_params(old_item, old_op),
+                    _effective_params(new_item, new_op),
+                )
+            )
             changes.extend(_diff_request_body(label, old_op, new_op))
             changes.extend(_diff_responses(label, old_op, new_op))
     return changes
 
 
 def _diff_parameters(
-    label: str, old_op: dict, new_op: dict
+    label: str, old_params: dict, new_params: dict
 ) -> list[BreakingChange]:
     changes: list[BreakingChange] = []
-    old_params = _params_by_key(old_op)
-    new_params = _params_by_key(new_op)
     for key, old_p in old_params.items():
         name, where = key
         loc = f"{label} param '{name}' in {where}"
