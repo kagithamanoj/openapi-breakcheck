@@ -874,3 +874,270 @@ def test_cli_json_output_invalid_choice(tmp_path):
     )
     with pytest.raises(SystemExit):
         main([old_p, new_p, "--output", "yaml"])
+
+
+def nested_body_schema(zip_type="integer", state_values=("CA", "NY"), required=("zip",)):
+    return {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "object",
+                "required": list(required),
+                "properties": {
+                    "zip": {"type": zip_type},
+                    "state": {"type": "string", "enum": list(state_values)},
+                    "city": {"type": "string"},
+                },
+            }
+        },
+    }
+
+
+def nested_body(zip_type="integer", state_values=("CA", "NY"), required=("zip",)):
+    return {
+        "content": {
+            "application/json": {
+                "schema": nested_body_schema(zip_type, state_values, required)
+            }
+        }
+    }
+
+
+def test_nested_request_body_prop_type_changed():
+    old = {"paths": {"/u": {"post": make_op(request_body=nested_body("integer"))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=nested_body("string"))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "'address'" in changes[0].location
+    assert "'zip'" in changes[0].location
+    assert "integer" in changes[0].detail and "string" in changes[0].detail
+
+
+def test_nested_request_body_enum_values_removed():
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(state_values=("CA", "NY")))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(state_values=("CA",)))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-enum-values-removed"]
+    assert "'address'" in changes[0].location
+    assert "'state'" in changes[0].location
+    assert "NY" in changes[0].detail
+
+
+def test_nested_required_body_prop_removed():
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(required=("zip",)))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(required=()))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["required-body-props-removed"]
+    assert "'address'" in changes[0].location
+    assert "zip" in changes[0].detail
+
+
+def test_nested_request_body_prop_became_required():
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(required=()))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=nested_body(required=("zip",)))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-became-required"]
+    assert "'address'" in changes[0].location
+    assert "zip" in changes[0].detail
+
+
+def test_three_levels_deep_request_body_prop_type_changed():
+    def schema(lat_type):
+        return {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "object",
+                    "properties": {
+                        "geo": {
+                            "type": "object",
+                            "properties": {"lat": {"type": lat_type}},
+                        }
+                    },
+                }
+            },
+        }
+
+    body = lambda s: {"content": {"application/json": {"schema": s}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(schema("number")))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(schema("string")))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "'address'" in changes[0].location
+    assert "'geo'" in changes[0].location
+    assert "'lat'" in changes[0].location
+
+
+def test_nested_object_type_change_reports_once():
+    old_schema = nested_body_schema()
+    new_schema = {
+        "type": "object",
+        "properties": {"address": {"type": "string"}},
+    }
+    body = lambda s: {"content": {"application/json": {"schema": s}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(old_schema))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(new_schema))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "'address'" in changes[0].location
+
+
+def test_nested_optional_body_prop_removed_is_fine():
+    old_schema = nested_body_schema()
+    new_schema = {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "object",
+                "required": ["zip"],
+                "properties": {
+                    "zip": {"type": "integer"},
+                    "state": {"type": "string", "enum": ["CA", "NY"]},
+                },
+            }
+        },
+    }
+    body = lambda s: {"content": {"application/json": {"schema": s}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(old_schema))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(new_schema))}}}
+    assert diff_specs(old, new) == []
+
+
+def test_unchanged_nested_schema_is_fine():
+    old = {"paths": {"/u": {"post": make_op(request_body=nested_body())}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=nested_body())}}}
+    assert diff_specs(old, new) == []
+
+
+def nested_response_schema(zip_type="integer", state_values=("CA", "NY"), required=("zip",)):
+    return nested_body_schema(zip_type, state_values, required)
+
+
+def test_nested_response_prop_type_changed():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=nested_response_schema("integer"))
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=nested_response_schema("string"))
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-prop-type-changed"]
+    assert "'address'" in changes[0].location
+    assert "'zip'" in changes[0].location
+
+
+def test_nested_response_enum_values_removed():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(
+                        schema=nested_response_schema(state_values=("CA", "NY"))
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(
+                        schema=nested_response_schema(state_values=("CA",))
+                    )
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-enum-values-removed"]
+    assert "'address'" in changes[0].location
+    assert "'state'" in changes[0].location
+    assert "NY" in changes[0].detail
+
+
+def test_nested_required_response_prop_removed():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(
+                        schema=nested_response_schema(required=("zip",))
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=nested_response_schema(required=()))
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["required-response-props-removed"]
+    assert "'address'" in changes[0].location
+    assert "zip" in changes[0].detail
+
+
+def test_nested_optional_response_prop_removed_is_fine():
+    old_schema = nested_response_schema()
+    new_schema = {
+        "type": "object",
+        "properties": {
+            "address": {
+                "type": "object",
+                "required": ["zip"],
+                "properties": {
+                    "zip": {"type": "integer"},
+                    "state": {"type": "string", "enum": ["CA", "NY"]},
+                },
+            }
+        },
+    }
+    old = {
+        "paths": {"/u": {"get": make_op(responses=response(schema=old_schema))}}
+    }
+    new = {
+        "paths": {"/u": {"get": make_op(responses=response(schema=new_schema))}}
+    }
+    assert diff_specs(old, new) == []

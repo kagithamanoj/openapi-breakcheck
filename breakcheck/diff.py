@@ -169,6 +169,121 @@ def _required_props(schema: dict) -> set[str]:
     return set((schema or {}).get("required") or [])
 
 
+# Kind names and detail wording for the schema diff, per side. The
+# request-body and response checks share the same recursion, but keep their
+# own kind names so existing output is unchanged.
+_SCHEMA_KINDS = {
+    "request-body": {
+        "type_changed": "request-body-type-changed",
+        "type_detail": "request body type changed from {} to {}",
+        "prop_type_changed": "request-body-prop-type-changed",
+        "enum_removed": "request-body-enum-values-removed",
+        "required_removed": "required-body-props-removed",
+        "required_removed_detail": "required body properties removed: {}",
+        "became_required": "request-body-prop-became-required",
+        "became_required_detail": "request body properties became required: {}",
+        "prop_word": "body property",
+    },
+    "response": {
+        "type_changed": "response-type-changed",
+        "type_detail": "response type changed from {} to {}",
+        "prop_type_changed": "response-prop-type-changed",
+        "enum_removed": "response-enum-values-removed",
+        "required_removed": "required-response-props-removed",
+        "required_removed_detail": "required response properties removed: {}",
+        "became_required": None,
+        "became_required_detail": None,
+        "prop_word": "property",
+    },
+}
+
+
+def _check_enum_narrowing(
+    changes: list, loc: str, old_schema: dict, new_schema: dict, kinds: dict
+) -> None:
+    """Flag enum values present in the old schema but missing in the new."""
+    old_enum = set((old_schema or {}).get("enum") or [])
+    new_enum = set((new_schema or {}).get("enum") or [])
+    removed_values = sorted(old_enum - new_enum)
+    if old_enum and removed_values:
+        changes.append(
+            BreakingChange(
+                kinds["enum_removed"],
+                loc,
+                f"enum values removed: {', '.join(map(str, removed_values))}",
+            )
+        )
+
+
+def _diff_schema(
+    loc: str, old_schema: dict, new_schema: dict, kinds: dict, nested: bool = False
+) -> list[BreakingChange]:
+    """Diff two object schemas, recursing into nested object properties.
+
+    At the top level this is the schema itself (a request body or a
+    response); deeper levels are properties of that schema. Type changes,
+    narrowed enums, and required-property changes are flagged at every
+    level. Removed optional properties are fine at every level, and a
+    property whose type changed is not recursed into.
+    """
+    changes: list[BreakingChange] = []
+    old_type = _schema_type(old_schema)
+    new_type = _schema_type(new_schema)
+    if old_type != new_type:
+        kind = kinds["prop_type_changed"] if nested else kinds["type_changed"]
+        detail = (
+            "type changed from {} to {}".format(old_type, new_type)
+            if nested
+            else kinds["type_detail"].format(old_type, new_type)
+        )
+        changes.append(BreakingChange(kind, loc, detail))
+        if not nested:
+            return changes
+        # A property whose type changed is not recursed into, but its enum
+        # is still checked, matching the old top-level behaviour.
+        _check_enum_narrowing(changes, loc, old_schema, new_schema, kinds)
+        return changes
+    if nested:
+        _check_enum_narrowing(changes, loc, old_schema, new_schema, kinds)
+    removed = sorted(_required_props(old_schema) - _required_props(new_schema))
+    if removed:
+        changes.append(
+            BreakingChange(
+                kinds["required_removed"],
+                loc,
+                kinds["required_removed_detail"].format(", ".join(removed)),
+            )
+        )
+    if kinds["became_required"] is not None:
+        newly_required = sorted(
+            _required_props(new_schema) - _required_props(old_schema)
+        )
+        if newly_required:
+            changes.append(
+                BreakingChange(
+                    kinds["became_required"],
+                    loc,
+                    kinds["became_required_detail"].format(
+                        ", ".join(newly_required)
+                    ),
+                )
+            )
+    old_props = (old_schema or {}).get("properties") or {}
+    new_props = (new_schema or {}).get("properties") or {}
+    prop_word = kinds["prop_word"] if not nested else "property"
+    for name, old_prop in old_props.items():
+        new_prop = new_props.get(name)
+        if new_prop is None:
+            continue
+        prop_loc = f"{loc} {prop_word} '{name}'"
+        changes.extend(
+            _diff_schema(prop_loc, old_prop, new_prop, kinds, nested=True)
+        )
+        # The recursive call above already reports the property's own type
+        # change and enum narrowing; nothing else to check here.
+    return changes
+
+
 def _diff_request_body(
     label: str, old_op: dict, new_op: dict
 ) -> list[BreakingChange]:
@@ -213,65 +328,7 @@ def _diff_request_body(
 def _diff_request_body_schema(
     loc: str, old_schema: dict, new_schema: dict
 ) -> list[BreakingChange]:
-    changes: list[BreakingChange] = []
-    old_type = _schema_type(old_schema)
-    new_type = _schema_type(new_schema)
-    if old_type != new_type:
-        changes.append(
-            BreakingChange(
-                "request-body-type-changed",
-                loc,
-                f"request body type changed from {old_type} to {new_type}",
-            )
-        )
-        return changes
-    removed = sorted(_required_props(old_schema) - _required_props(new_schema))
-    if removed:
-        changes.append(
-            BreakingChange(
-                "required-body-props-removed",
-                loc,
-                f"required body properties removed: {', '.join(removed)}",
-            )
-        )
-    newly_required = sorted(_required_props(new_schema) - _required_props(old_schema))
-    if newly_required:
-        changes.append(
-            BreakingChange(
-                "request-body-prop-became-required",
-                loc,
-                f"request body properties became required: {', '.join(newly_required)}",
-            )
-        )
-    old_props = (old_schema or {}).get("properties") or {}
-    new_props = (new_schema or {}).get("properties") or {}
-    for name, old_prop in old_props.items():
-        new_prop = new_props.get(name)
-        if new_prop is None:
-            continue
-        prop_loc = f"{loc} body property '{name}'"
-        old_ptype = _schema_type(old_prop)
-        new_ptype = _schema_type(new_prop)
-        if old_ptype != new_ptype:
-            changes.append(
-                BreakingChange(
-                    "request-body-prop-type-changed",
-                    prop_loc,
-                    f"type changed from {old_ptype} to {new_ptype}",
-                )
-            )
-        old_enum = set((old_prop or {}).get("enum") or [])
-        new_enum = set((new_prop or {}).get("enum") or [])
-        removed_values = sorted(old_enum - new_enum)
-        if old_enum and removed_values:
-            changes.append(
-                BreakingChange(
-                    "request-body-enum-values-removed",
-                    prop_loc,
-                    f"enum values removed: {', '.join(map(str, removed_values))}",
-                )
-            )
-    return changes
+    return _diff_schema(loc, old_schema, new_schema, _SCHEMA_KINDS["request-body"])
 
 
 def _first_schema(body: dict) -> dict:
@@ -324,53 +381,4 @@ def _diff_responses(
 def _diff_response_schema(
     loc: str, old_schema: dict, new_schema: dict
 ) -> list[BreakingChange]:
-    changes: list[BreakingChange] = []
-    old_type = _schema_type(old_schema)
-    new_type = _schema_type(new_schema)
-    if old_type != new_type:
-        changes.append(
-            BreakingChange(
-                "response-type-changed",
-                loc,
-                f"response type changed from {old_type} to {new_type}",
-            )
-        )
-        return changes
-    removed = sorted(_required_props(old_schema) - _required_props(new_schema))
-    if removed:
-        changes.append(
-            BreakingChange(
-                "required-response-props-removed",
-                loc,
-                f"required response properties removed: {', '.join(removed)}",
-            )
-        )
-    old_props = (old_schema or {}).get("properties") or {}
-    new_props = (new_schema or {}).get("properties") or {}
-    for name, old_prop in old_props.items():
-        new_prop = new_props.get(name)
-        if new_prop is None:
-            continue
-        prop_loc = f"{loc} property '{name}'"
-        old_ptype = _schema_type(old_prop)
-        new_ptype = _schema_type(new_prop)
-        if old_ptype != new_ptype:
-            changes.append(
-                BreakingChange(
-                    "response-prop-type-changed",
-                    prop_loc,
-                    f"type changed from {old_ptype} to {new_ptype}",
-                )
-            )
-        old_enum = set((old_prop or {}).get("enum") or [])
-        new_enum = set((new_prop or {}).get("enum") or [])
-        removed_values = sorted(old_enum - new_enum)
-        if old_enum and removed_values:
-            changes.append(
-                BreakingChange(
-                    "response-enum-values-removed",
-                    prop_loc,
-                    f"enum values removed: {', '.join(map(str, removed_values))}",
-                )
-            )
-    return changes
+    return _diff_schema(loc, old_schema, new_schema, _SCHEMA_KINDS["response"])
