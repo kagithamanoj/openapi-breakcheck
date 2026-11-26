@@ -1141,3 +1141,234 @@ def test_nested_optional_response_prop_removed_is_fine():
         "paths": {"/u": {"get": make_op(responses=response(schema=new_schema))}}
     }
     assert diff_specs(old, new) == []
+
+
+def array_body(items):
+    return {
+        "content": {
+            "application/json": {"schema": {"type": "array", "items": items}}
+        }
+    }
+
+
+def test_request_body_array_item_type_changed():
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body({"type": "string"}))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body({"type": "integer"}))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "items" in changes[0].location
+    assert "string" in changes[0].detail and "integer" in changes[0].detail
+
+
+def test_response_array_item_type_changed():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(
+                        schema={"type": "array", "items": {"type": "string"}}
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(
+                        schema={"type": "array", "items": {"type": "integer"}}
+                    )
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-prop-type-changed"]
+    assert "items" in changes[0].location
+    assert "string" in changes[0].detail and "integer" in changes[0].detail
+
+
+def test_request_body_array_item_enum_values_removed():
+    old = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=array_body(
+                        {"type": "string", "enum": ["a", "b"]}
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=array_body({"type": "string", "enum": ["a"]})
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-enum-values-removed"]
+    assert "items" in changes[0].location
+    assert "b" in changes[0].detail
+
+
+def test_unchanged_array_items_is_fine():
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body({"type": "string"}))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body({"type": "string"}))}
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
+def test_array_of_objects_nested_prop_type_changed():
+    def items(count_type):
+        return {
+            "type": "object",
+            "properties": {"count": {"type": count_type}},
+        }
+
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body(items("integer")))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"post": make_op(request_body=array_body(items("string")))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "items" in changes[0].location
+    assert "'count'" in changes[0].location
+
+
+def test_array_prop_item_type_changed():
+    def schema(item_type):
+        return {
+            "type": "object",
+            "properties": {
+                "tags": {"type": "array", "items": {"type": item_type}}
+            },
+        }
+
+    body = lambda s: {"content": {"application/json": {"schema": s}}}
+    old = {"paths": {"/u": {"post": make_op(request_body=body(schema("string")))}}}
+    new = {"paths": {"/u": {"post": make_op(request_body=body(schema("integer")))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert "'tags'" in changes[0].location
+    assert "items" in changes[0].location
+
+
+def test_nested_array_item_type_changed():
+    old = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=array_body(
+                        {"type": "array", "items": {"type": "string"}}
+                    )
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=array_body(
+                        {"type": "array", "items": {"type": "integer"}}
+                    )
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-prop-type-changed"]
+    assert changes[0].location.count("items") == 2
+    assert "string" in changes[0].detail and "integer" in changes[0].detail
+
+
+def array_param(name, items, where="query", required=False):
+    return {
+        "name": name,
+        "in": where,
+        "required": required,
+        "schema": {"type": "array", "items": items},
+    }
+
+
+def test_param_array_item_type_changed():
+    old = {
+        "paths": {
+            "/u": {"get": make_op([array_param("ids", {"type": "string"})])}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op([array_param("ids", {"type": "integer"})])}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["param-type-changed"]
+    assert "'ids'" in changes[0].location
+    assert "items" in changes[0].location
+    assert "string" in changes[0].detail and "integer" in changes[0].detail
+
+
+def test_param_array_item_enum_values_removed():
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    [array_param("sort", {"type": "string", "enum": ["a", "b"]})]
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    [array_param("sort", {"type": "string", "enum": ["a"]})]
+                )
+            }
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["enum-values-removed"]
+    assert "items" in changes[0].location
+    assert "b" in changes[0].detail
+
+
+def test_unchanged_param_array_items_is_fine():
+    old = {
+        "paths": {
+            "/u": {"get": make_op([array_param("ids", {"type": "string"})])}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op([array_param("ids", {"type": "string"})])}
+        }
+    }
+    assert diff_specs(old, new) == []

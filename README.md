@@ -25,6 +25,8 @@ and get a plain list of everything that can break an existing client.
 - Response property type changes and narrowed enums
 - Nested object property changes in request bodies and responses
   (type changes, narrowed enums, and required-property changes at any depth)
+- Array item type changes and narrowed enums in parameters, request bodies,
+  and responses (including nested arrays and arrays of objects)
 
 Added endpoints and new optional parameters are not breaking, so they pass.
 

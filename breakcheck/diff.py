@@ -150,6 +150,9 @@ def _diff_parameters(
                     f"enum values removed: {', '.join(map(str, removed_values))}",
                 )
             )
+        changes.extend(
+            _diff_param_items(loc, old_p.get("schema"), new_p.get("schema"))
+        )
     for key, new_p in new_params.items():
         if key in old_params:
             continue
@@ -162,6 +165,46 @@ def _diff_parameters(
                     "new required parameter was added",
                 )
             )
+    return changes
+
+
+def _diff_param_items(loc: str, old_schema: dict, new_schema: dict) -> list:
+    """Flag type changes and enum narrowing inside array `items` schemas.
+
+    A parameter declared as an array of strings becoming an array of
+    integers breaks clients the same way a plain type change does, so
+    items are diffed recursively, including nested arrays. When either
+    side has no items schema there is nothing to compare.
+    """
+    changes: list[BreakingChange] = []
+    old_items = (old_schema or {}).get("items") or {}
+    new_items = (new_schema or {}).get("items") or {}
+    if not old_items or not new_items:
+        return changes
+    items_loc = f"{loc} items"
+    old_type = _schema_type(old_items)
+    new_type = _schema_type(new_items)
+    if old_type != new_type:
+        changes.append(
+            BreakingChange(
+                "param-type-changed",
+                items_loc,
+                f"type changed from {old_type} to {new_type}",
+            )
+        )
+    old_enum = set(old_items.get("enum") or [])
+    new_enum = set(new_items.get("enum") or [])
+    removed_values = sorted(old_enum - new_enum)
+    if old_enum and removed_values:
+        changes.append(
+            BreakingChange(
+                "enum-values-removed",
+                items_loc,
+                f"enum values removed: {', '.join(map(str, removed_values))}",
+            )
+        )
+    if old_type == new_type:
+        changes.extend(_diff_param_items(items_loc, old_items, new_items))
     return changes
 
 
@@ -268,6 +311,12 @@ def _diff_schema(
                     ),
                 )
             )
+    old_items = (old_schema or {}).get("items") or {}
+    new_items = (new_schema or {}).get("items") or {}
+    if old_items and new_items:
+        changes.extend(
+            _diff_schema(f"{loc} items", old_items, new_items, kinds, nested=True)
+        )
     old_props = (old_schema or {}).get("properties") or {}
     new_props = (new_schema or {}).get("properties") or {}
     prop_word = kinds["prop_word"] if not nested else "property"
