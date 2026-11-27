@@ -286,8 +286,11 @@ def _diff_schema(
         # is still checked, matching the old top-level behaviour.
         _check_enum_narrowing(changes, loc, old_schema, new_schema, kinds)
         return changes
-    if nested:
-        _check_enum_narrowing(changes, loc, old_schema, new_schema, kinds)
+    # Enum narrowing is checked at every level, including the root schema
+    # itself: a request body or response that is itself an enum (for
+    # example {"type": "string", "enum": ["a", "b"]}) breaks clients when
+    # a value is dropped, just like a narrowed property enum does.
+    _check_enum_narrowing(changes, loc, old_schema, new_schema, kinds)
     removed = sorted(_required_props(old_schema) - _required_props(new_schema))
     if removed:
         changes.append(

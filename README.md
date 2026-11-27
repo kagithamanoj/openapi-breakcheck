@@ -23,6 +23,8 @@ and get a plain list of everything that can break an existing client.
 - Response schema type changes
 - Removed required response properties
 - Response property type changes and narrowed enums
+- Root-level enum narrowing in request bodies and responses (when the
+  schema itself is an enum, not just one of its properties)
 - Nested object property changes in request bodies and responses
   (type changes, narrowed enums, and required-property changes at any depth)
 - Array item type changes and narrowed enums in parameters, request bodies,

@@ -462,6 +462,41 @@ def test_request_body_enum_widened_is_fine():
     assert diff_specs(old, new) == []
 
 
+def test_root_request_body_enum_values_removed():
+    schema = lambda values: {"type": "string", "enum": values}
+    body = lambda values: {
+        "content": {"application/json": {"schema": schema(values)}}
+    }
+    old = {
+        "paths": {
+            "/u": {"post": make_op(request_body=body(["active", "archived"]))}
+        }
+    }
+    new = {"paths": {"/u": {"post": make_op(request_body=body(["active"]))}}}
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["request-body-enum-values-removed"]
+    assert "archived" in changes[0].detail
+    assert changes[0].location == "POST /u"
+
+
+def test_root_request_body_enum_widened_is_fine():
+    schema = lambda values: {"type": "string", "enum": values}
+    body = lambda values: {
+        "content": {"application/json": {"schema": schema(values)}}
+    }
+    old = {"paths": {"/u": {"post": make_op(request_body=body(["active"]))}}}
+    new = {
+        "paths": {
+            "/u": {
+                "post": make_op(
+                    request_body=body(["active", "archived"])
+                )
+            }
+        }
+    }
+    assert diff_specs(old, new) == []
+
+
 def test_removed_request_body_media_type():
     body = lambda media: {
         "content": {
@@ -736,6 +771,47 @@ def test_response_enum_values_removed():
     changes = diff_specs(old, new)
     assert [c.kind for c in changes] == ["response-enum-values-removed"]
     assert "archived" in changes[0].detail
+
+
+def test_root_response_enum_values_removed():
+    schema = lambda values: {"type": "string", "enum": values}
+    old = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=schema(["active", "archived"]))
+                )
+            }
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema(["active"])))}
+        }
+    }
+    changes = diff_specs(old, new)
+    assert [c.kind for c in changes] == ["response-enum-values-removed"]
+    assert "archived" in changes[0].detail
+    assert "response '200'" in changes[0].location
+
+
+def test_root_response_enum_widened_is_fine():
+    schema = lambda values: {"type": "string", "enum": values}
+    old = {
+        "paths": {
+            "/u": {"get": make_op(responses=response(schema=schema(["active"])))}
+        }
+    }
+    new = {
+        "paths": {
+            "/u": {
+                "get": make_op(
+                    responses=response(schema=schema(["active", "archived"]))
+                )
+            }
+        }
+    }
+    assert diff_specs(old, new) == []
 
 
 def test_removed_response_media_type():
